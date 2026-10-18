@@ -1,12 +1,13 @@
 package com.example
 
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Bundle
 import android.provider.Settings
+import android.provider.MediaStore
+import android.os.Build
+import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -89,13 +90,31 @@ class MainActivity : ComponentActivity() {
                                             if (uri == null) {
                                                 Toast.makeText(this@MainActivity, "Choose a video first", Toast.LENGTH_SHORT).show()
                                             } else {
-                                                val intent = Intent(this@MainActivity, VirtualCameraService::class.java).apply {
-                                                    action = VirtualCameraService.ACTION_START
-                                                    data = uri
-                                                    putExtra(VirtualCameraService.EXTRA_VIDEO_URI, uri.toString())
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }
-                                                ContextCompat.startForegroundService(this@MainActivity, intent)
+                                                Thread {
+                                                    val copied = publishCameraSource(uri)
+                                                    runOnUiThread {
+                                                        if (!copied) {
+                                                            Toast.makeText(
+                                                                this@MainActivity,
+                                                                "Could not publish camera source. Check storage access and try another video.",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                        } else {
+                                                            val intent = Intent(this@MainActivity, VirtualCameraService::class.java).apply {
+                                                                action = VirtualCameraService.ACTION_START
+                                                                data = uri
+                                                                putExtra(VirtualCameraService.EXTRA_VIDEO_URI, uri.toString())
+                                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            }
+                                                            ContextCompat.startForegroundService(this@MainActivity, intent)
+                                                            Toast.makeText(
+                                                                this@MainActivity,
+                                                                "Camera1 source copied to Movies/VirtualCamera/source.mp4",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                        }
+                                                    }
+                                                }.start()
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth()
@@ -145,9 +164,6 @@ class MainActivity : ComponentActivity() {
                                         OutlinedButton(onClick = { launchInstalledApp(app.packageName) }) {
                                             Text("Open")
                                         }
-                                        OutlinedButton(onClick = { setUpWorkProfileFor(app.packageName) }) {
-                                            Text("Clone")
-                                        }
                                     }
                                 }
                             }
@@ -171,6 +187,37 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Publishes the selected video at the shared path consumed by the Xposed
+     * Camera1 hook. A target app still needs Android permission to read shared
+     * video media; the hook safely falls back to the real camera if unavailable.
+     */
+    private fun publishCameraSource(uri: Uri): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "source.mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/VirtualCamera")
+                put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+        }
+        val destination = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected video")
+            val output = contentResolver.openOutputStream(destination, "w") ?: throw IllegalStateException("Cannot write camera source")
+            input.use { source -> output.use { target -> source.copyTo(target) } }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val ready = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+                contentResolver.update(destination, ready, null, null)
+            }
+            true
+        } catch (error: Throwable) {
+            contentResolver.delete(destination, null, null)
+            android.util.Log.e("VirtualCamera", "Failed to publish camera source", error)
+            false
+        }
+    }
+
     private fun refreshInstalledApps() {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         installedApps = try {
@@ -189,49 +236,6 @@ class MainActivity : ComponentActivity() {
         } catch (error: Exception) {
             importedApkStatus = "Could not load installed apps: ${error.localizedMessage ?: error.javaClass.simpleName}"
             emptyList()
-        }
-    }
-
-    /**
-     * Starts Android's system-managed work-profile provisioning flow.
-     * The selected package is passed to the profile-owner receiver, which can
-     * request installation of an already-installed package into the new profile.
-     * This does not copy APKs or bypass Android's profile/security boundaries.
-     */
-    private fun setUpWorkProfileFor(targetPackage: String) {
-        if (targetPackage == packageName) return
-        val admin = ComponentName(this, com.example.profile.WorkProfileAdminReceiver::class.java)
-        try {
-            val intent = Intent(DevicePolicyManager.ACTION_PROVISION_MANAGED_PROFILE).apply {
-                putExtra(DevicePolicyManager.EXTRA_PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME, admin)
-                putExtra(
-                    DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE,
-                    Bundle().apply {
-                        putString(com.example.profile.WorkProfileAdminReceiver.PENDING_PACKAGE, targetPackage)
-                    }
-                )
-            }
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQUEST_WORK_PROFILE)
-        } catch (error: Exception) {
-            Toast.makeText(
-                this,
-                "Work profile setup is unavailable on this device: ${error.localizedMessage ?: error.javaClass.simpleName}",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    @Deprecated("Android returns the work-profile provisioning result through the activity result")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_WORK_PROFILE) {
-            val message = if (resultCode == RESULT_OK) {
-                "Work profile setup completed. Check the system profile and app list."
-            } else {
-                "Work profile setup was cancelled or could not complete."
-            }
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -294,10 +298,6 @@ class MainActivity : ComponentActivity() {
         } catch (error: Exception) {
             importedApkStatus = "Could not open Android installer: ${error.localizedMessage ?: error.javaClass.simpleName}"
         }
-    }
-
-    companion object {
-        private const val REQUEST_WORK_PROFILE = 4107
     }
 
     override fun onDestroy() {

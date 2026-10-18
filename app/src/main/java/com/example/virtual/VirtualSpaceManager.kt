@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 data class AppInfo(
     val appName: String,
@@ -41,19 +40,18 @@ class VirtualSpaceManager(private val context: Context) {
     }
 
     /**
-     * অ্যাপকে কাস্টম স্যান্ডবক্সে ক্লোন ও আইসোলেট করা
+     * A private directory is not an Android application runtime. Do not report a
+     * successful clone until package loading, per-app process isolation,
+     * component routing, and package-manager virtualization are integrated.
+     *
+     * Retained for source compatibility with the current UI.
      */
     fun cloneAppToVirtualSpace(packageName: String, selectedAndroidVersion: String): Boolean {
-        return try {
-            val virtualDataDir = File(context.filesDir, "virtual_space/$packageName")
-            if (!virtualDataDir.exists()) {
-                virtualDataDir.mkdirs()
-            }
-            Log.d(TAG, "App $packageName successfully cloned into virtual space with $selectedAndroidVersion configuration.")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clone app $packageName: ${e.message}")
-            false
-        }
+        Log.w(
+            TAG,
+            "Virtual app runtime unavailable: cannot clone " + packageName + " into " +
+                selectedAndroidVersion + ". Creating a data directory would not install or run the app."
+        )
+        return false
     }
 }

@@ -1,0 +1,3 @@
+[submodule "third_party/VCamera"]
+	path = third_party/VCamera
+	url = https://github.com/andvipgroup/VCamera.git

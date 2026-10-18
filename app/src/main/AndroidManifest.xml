@@ -45,39 +45,10 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".profile.WorkProfileProvisioningActivity"
-            android:exported="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter>
-                <action android:name="android.app.action.GET_PROVISIONING_MODE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
         <service
             android:name=".service.VirtualCameraService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|microphone" />
-
-        <receiver
-            android:name=".profile.WorkProfileAdminReceiver"
-            android:description="@string/work_profile_admin_description"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
-            <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/work_profile_admin" />
-            <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
-            </intent-filter>
-        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

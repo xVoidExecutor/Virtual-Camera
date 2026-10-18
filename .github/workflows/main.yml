@@ -2,9 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "fix/build-ready-media-assistant", "foundation/android16-virtual-space-audit" ]
   pull_request:
-    branches: [ "main", "fix/build-ready-media-assistant" ]
   workflow_dispatch:
 
 permissions:
@@ -24,7 +22,6 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # Avoid setup-android's default attempt to install the removed SDK package "tools".
       - name: Set up Android command-line tools
         uses: android-actions/setup-android@v3
         with:
