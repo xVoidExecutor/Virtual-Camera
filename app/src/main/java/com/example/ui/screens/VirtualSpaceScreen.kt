@@ -72,7 +72,13 @@ fun VirtualSpaceScreen() {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Select App to Clone into Isolated Space:")
+        Text(text = "Installed apps (runtime integration required):")
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "This build does not yet contain an embedded virtual app runtime. Clone is disabled to avoid claiming that a data folder is a working app clone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(installedApps) { app ->
@@ -92,12 +98,15 @@ fun VirtualSpaceScreen() {
                             Text(text = app.appName, style = MaterialTheme.typography.titleMedium)
                             Text(text = app.packageName, style = MaterialTheme.typography.bodySmall)
                         }
-                        Button(onClick = {
-                            scope.launch {
-                                virtualManager.cloneAppToVirtualSpace(app.packageName, selectedVersion)
-                            }
-                        }) {
-                            Text("Clone")
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    virtualManager.cloneAppToVirtualSpace(app.packageName, selectedVersion)
+                                }
+                            },
+                            enabled = false
+                        ) {
+                            Text("Runtime unavailable")
                         }
                     }
                 }
