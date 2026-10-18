@@ -31,6 +31,8 @@ class VirtualCameraHook : IXposedHookLoadPackage {
         private val retrieverLock = Any()
         private val sourceFile = File("/sdcard/Movies/VirtualCamera/source.mp4")
         @Volatile private var retrieverReady = false
+        @Volatile private var loadedSourceModified: Long = -1L
+        @Volatile private var loadedSourceLength: Long = -1L
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
@@ -87,13 +89,28 @@ class VirtualCameraHook : IXposedHookLoadPackage {
 
     private fun nextFrameTimestampUs(): Long {
         val retriever = synchronized(retrieverLock) {
-            if (!retrieverReady) {
-                if (!sourceFile.isFile || !sourceFile.canRead()) return 0L
+            if (!sourceFile.isFile || !sourceFile.canRead()) {
+                Log.w(TAG, "Camera source is not readable at " + sourceFile + "; keeping the real camera frame")
+                return 0L
+            }
+
+            // Reload when a new video replaces the source while the target app stays open.
+            val modified = sourceFile.lastModified()
+            val length = sourceFile.length()
+            if (!retrieverReady || modified != loadedSourceModified || length != loadedSourceLength) {
                 try {
+                    if (retrieverReady) frameRetriever.release()
                     frameRetriever.setDataSource(sourceFile.absolutePath)
+                    loadedSourceModified = modified
+                    loadedSourceLength = length
                     retrieverReady = true
+                    frameClockUs.set(0L)
+                    Log.i(TAG, "Loaded camera source (" + length + " bytes)")
                 } catch (error: Throwable) {
-                    Log.w(TAG, "Cannot open source video", error)
+                    retrieverReady = false
+                    loadedSourceModified = -1L
+                    loadedSourceLength = -1L
+                    Log.w(TAG, "Cannot open source video at " + sourceFile, error)
                     return 0L
                 }
             }
