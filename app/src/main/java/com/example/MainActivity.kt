@@ -2,11 +2,14 @@ package com.example
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.provider.MediaStore
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -89,13 +92,31 @@ class MainActivity : ComponentActivity() {
                                             if (uri == null) {
                                                 Toast.makeText(this@MainActivity, "Choose a video first", Toast.LENGTH_SHORT).show()
                                             } else {
-                                                val intent = Intent(this@MainActivity, VirtualCameraService::class.java).apply {
-                                                    action = VirtualCameraService.ACTION_START
-                                                    data = uri
-                                                    putExtra(VirtualCameraService.EXTRA_VIDEO_URI, uri.toString())
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }
-                                                ContextCompat.startForegroundService(this@MainActivity, intent)
+                                                Thread {
+                                                    val copied = publishCameraSource(uri)
+                                                    runOnUiThread {
+                                                        if (!copied) {
+                                                            Toast.makeText(
+                                                                this@MainActivity,
+                                                                "Could not publish camera source. Check storage access and try another video.",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                        } else {
+                                                            val intent = Intent(this@MainActivity, VirtualCameraService::class.java).apply {
+                                                                action = VirtualCameraService.ACTION_START
+                                                                data = uri
+                                                                putExtra(VirtualCameraService.EXTRA_VIDEO_URI, uri.toString())
+                                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            }
+                                                            ContextCompat.startForegroundService(this@MainActivity, intent)
+                                                            Toast.makeText(
+                                                                this@MainActivity,
+                                                                "Camera1 source copied to Movies/VirtualCamera/source.mp4",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                        }
+                                                    }
+                                                }.start()
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth()
@@ -168,6 +189,37 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Publishes the selected video at the shared path consumed by the Xposed
+     * Camera1 hook. A target app still needs Android permission to read shared
+     * video media; the hook safely falls back to the real camera if unavailable.
+     */
+    private fun publishCameraSource(uri: Uri): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "source.mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/VirtualCamera")
+                put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+        }
+        val destination = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected video")
+            val output = contentResolver.openOutputStream(destination, "w") ?: throw IllegalStateException("Cannot write camera source")
+            input.use { source -> output.use { target -> source.copyTo(target) } }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val ready = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+                contentResolver.update(destination, ready, null, null)
+            }
+            true
+        } catch (error: Throwable) {
+            contentResolver.delete(destination, null, null)
+            android.util.Log.e("VirtualCamera", "Failed to publish camera source", error)
+            false
         }
     }
 
