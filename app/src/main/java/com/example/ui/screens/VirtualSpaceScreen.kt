@@ -1,8 +1,13 @@
 package com.example.screens
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -10,39 +15,89 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.virtual.AppInfo
+import com.example.virtual.VirtualApkStore
 import com.example.virtual.VirtualSpaceManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VirtualSpaceScreen() {
     val context = LocalContext.current
     val virtualManager = remember { VirtualSpaceManager(context) }
+    val apkStore = remember { VirtualApkStore(context) }
     val scope = rememberCoroutineScope()
 
     var installedApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
-    var selectedVersion by remember { mutableStateOf("Android 14") }
+    var clones by remember { mutableStateOf(apkStore.listClones()) }
+    var selectedVersion by remember { mutableStateOf("Android 16 (API 36)") }
     var isDropdownExpanded by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
 
-    val androidVersions = listOf("Android 8 (Oreo)", "Android 9 (Pie)", "Android 10 (Q)", "Android 14 (UpsideDownCake)")
+    val androidVersions = listOf(
+        "Android 16 (API 36)",
+        "Android 15 (API 35)",
+        "Android 14 (API 34)",
+        "Android 13 (API 33)"
+    )
+
+    val apkPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                busy = true
+                status = null
+                try {
+                    val record = withContext(Dispatchers.IO) {
+                        val staged = File(context.cacheDir, "apk-import-${System.currentTimeMillis()}.apk")
+                        try {
+                            val input = context.contentResolver.openInputStream(uri)
+                                ?: throw IOException("Could not open selected APK")
+                            input.use { source ->
+                                staged.outputStream().use { output -> source.copyTo(output) }
+                            }
+                            apkStore.importApk(staged)
+                        } finally {
+                            staged.delete()
+                        }
+                    }
+                    clones = apkStore.listClones()
+                    status = "Imported ${record.label}. Runtime launch requires the Android 16 dispatcher."
+                } catch (error: Exception) {
+                    status = error.localizedMessage ?: "APK import failed"
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         installedApps = virtualManager.getInstalledApps()
+        clones = apkStore.listClones()
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier = Modifier.fillMaxSize().padding(16.dp)
     ) {
+        Text("Virtual Space & App Cloner", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(8.dp))
         Text(
-            text = "Virtual Space & App Cloner",
-            style = MaterialTheme.typography.headlineMedium
+            "Virtual APK library",
+            style = MaterialTheme.typography.titleMedium
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            "Import APKs into separate private instance records. Imported APKs are stored locally; this screen does not claim they can run until the virtual runtime dispatcher is integrated.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(10.dp))
 
-        // অ্যান্ড্রয়েড ভার্সন ড্রপডাউন সিলেক্টর
-        Text(text = "Select Virtual Environment Android Version:")
         ExposedDropdownMenuBox(
             expanded = isDropdownExpanded,
             onExpandedChange = { isDropdownExpanded = !isDropdownExpanded }
@@ -51,9 +106,8 @@ fun VirtualSpaceScreen() {
                 value = selectedVersion,
                 onValueChange = {},
                 readOnly = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()
+                label = { Text("Target virtual Android") },
+                modifier = Modifier.fillMaxWidth().menuAnchor()
             )
             ExposedDropdownMenu(
                 expanded = isDropdownExpanded,
@@ -71,45 +125,64 @@ fun VirtualSpaceScreen() {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Installed apps (runtime integration required):")
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "This build does not yet contain an embedded virtual app runtime. Clone is disabled to avoid claiming that a data folder is a working app clone.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = { apkPicker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (busy) "Importing APK…" else "Import APK")
+        }
+        status?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall)
+        }
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(installedApps) { app ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                ) {
+        Spacer(Modifier.height(16.dp))
+        Text("Imported APK instances (${clones.size})", style = MaterialTheme.typography.titleMedium)
+        LazyColumn(
+            modifier = Modifier.weight(1f, fill = true),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(clones, key = { it.id }) { clone ->
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(text = app.appName, style = MaterialTheme.typography.titleMedium)
-                            Text(text = app.packageName, style = MaterialTheme.typography.bodySmall)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(clone.label, style = MaterialTheme.typography.titleMedium)
+                            Text(clone.packageName, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Stored • v${clone.versionName ?: clone.versionCode}",
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    virtualManager.cloneAppToVirtualSpace(app.packageName, selectedVersion)
-                                }
-                            },
-                            enabled = false
-                        ) {
-                            Text("Runtime unavailable")
+                        IconButton(onClick = {
+                            if (apkStore.removeClone(clone.id)) {
+                                clones = apkStore.listClones()
+                                status = "Removed ${clone.label}"
+                            } else {
+                                status = "Could not remove instance"
+                            }
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Remove imported APK")
                         }
                     }
                 }
+            }
+
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text("Installed on this device", style = MaterialTheme.typography.titleMedium)
+            }
+            items(installedApps, key = { it.packageName }) { app ->
+                ListItem(
+                    headlineContent = { Text(app.appName) },
+                    supportingContent = { Text(app.packageName) }
+                )
+                HorizontalDivider()
             }
         }
     }
