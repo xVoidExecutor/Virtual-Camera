@@ -407,7 +407,11 @@ class FloatingOverlayManager(private val context: Context) {
                         ) {
                             // Virtual Cam On/Off
                             IconButton(
-                                onClick = { onToggleVirtualCam?.invoke() },
+                                onClick = {
+                                    val callback = onToggleVirtualCam
+                                    if (callback != null) callback()
+                                    else isVirtualCamActive.value = !isVirtualCamActive.value
+                                },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = if (camActive) Color(0xFF6C5CE7) else Color(0xFF2D3436)
                                 ),
@@ -423,7 +427,16 @@ class FloatingOverlayManager(private val context: Context) {
 
                             // Play / Pause
                             IconButton(
-                                onClick = { onTogglePlayPause?.invoke() },
+                                onClick = {
+                                    val callback = onTogglePlayPause
+                                    if (callback != null) callback()
+                                    else {
+                                        isPlaying.value = !isPlaying.value
+                                        currentPreparedPlayer?.let { player ->
+                                            if (isPlaying.value && camActive) player.start() else player.pause()
+                                        }
+                                    }
+                                },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = Color(0xFF0984E3)
                                 ),
@@ -439,7 +452,14 @@ class FloatingOverlayManager(private val context: Context) {
 
                             // Next Video
                             IconButton(
-                                onClick = { onNextVideo?.invoke() },
+                                onClick = {
+                                    val callback = onNextVideo
+                                    if (callback != null) callback()
+                                    else currentPreparedPlayer?.let { player ->
+                                        player.seekTo(0)
+                                        if (camActive && playing) player.start()
+                                    }
+                                },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = Color(0xFF2D3436)
                                 ),
@@ -455,7 +475,11 @@ class FloatingOverlayManager(private val context: Context) {
 
                             // Mirror Flip
                             IconButton(
-                                onClick = { onToggleMirror?.invoke() },
+                                onClick = {
+                                    val callback = onToggleMirror
+                                    if (callback != null) callback()
+                                    else isMirrored.value = !isMirrored.value
+                                },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = if (mirrored) Color(0xFFE84393) else Color(0xFF2D3436)
                                 ),
@@ -471,7 +495,11 @@ class FloatingOverlayManager(private val context: Context) {
 
                             // Lip-Sync Toggle
                             IconButton(
-                                onClick = { onToggleLipSync?.invoke() },
+                                onClick = {
+                                    val callback = onToggleLipSync
+                                    if (callback != null) callback()
+                                    else isLipSyncActive.value = !isLipSyncActive.value
+                                },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = if (lipSync) Color(0xFF00CEC9) else Color(0xFF2D3436)
                                 ),
@@ -487,7 +515,11 @@ class FloatingOverlayManager(private val context: Context) {
 
                             // Noise Cancellation Toggle
                             IconButton(
-                                onClick = { onToggleNoiseCancellation?.invoke() },
+                                onClick = {
+                                    val callback = onToggleNoiseCancellation
+                                    if (callback != null) callback()
+                                    else isNoiseCancellationActive.value = !isNoiseCancellationActive.value
+                                },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = if (noiseCancel) Color(0xFF00B894) else Color(0xFF2D3436)
                                 ),
