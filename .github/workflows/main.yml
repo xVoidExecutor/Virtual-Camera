@@ -2,9 +2,9 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "fix/build-ready-media-assistant" ]
+    branches: [ "main", "fix/build-ready-media-assistant", "foundation/android16-virtual-space-audit" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "fix/build-ready-media-assistant" ]
   workflow_dispatch:
 
 permissions:
