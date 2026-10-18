@@ -24,8 +24,11 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
+      # Avoid setup-android's default attempt to install the removed SDK package "tools".
+      - name: Set up Android command-line tools
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Grant execute permission for Gradle wrapper
         run: chmod +x gradlew
