@@ -1,7 +1,6 @@
 package com.example
 
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -30,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.example.service.VirtualCameraService
 import com.example.ui.theme.MyApplicationTheme
 import java.io.File
@@ -149,11 +149,12 @@ class MainActivity : ComponentActivity() {
                             Card(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("APK import", style = MaterialTheme.typography.titleLarge)
-                                    Text("Choose an APK to inspect its package metadata. Importing does not install or clone it.")
+                                    Text("Choose an APK, inspect its metadata, then optionally request a normal Android installation. This does not clone it.")
                                     Button(onClick = { apkPicker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) }) {
                                         Text("Choose APK")
                                     }
                                     Text(importedApkStatus, style = MaterialTheme.typography.bodyMedium)
+                                    OutlinedButton(onClick = { requestApkInstall() }, enabled = importedApkFile?.exists() == true, modifier = Modifier.fillMaxWidth()) { Text("Install APK with Android") }
                                 }
                             }
                         }
@@ -218,6 +219,29 @@ class MainActivity : ComponentActivity() {
             importedApkStatus = "APK: $label\nPackage: ${info.packageName}\nVersion: ${info.versionName ?: "unknown"}\nStored temporarily for inspection only."
         } catch (error: Exception) {
             importedApkStatus = "APK import failed: ${error.localizedMessage ?: error.javaClass.simpleName}"
+        }
+    }
+
+    private fun requestApkInstall() {
+        val apk = importedApkFile
+        if (apk == null || !apk.exists()) {
+            Toast.makeText(this, "Choose a valid APK first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                Toast.makeText(this, "Allow installs from this app, then press Install APK again", Toast.LENGTH_LONG).show()
+                return
+            }
+            val apkUri = FileProvider.getUriForFile(this, "$packageName.apkprovider", apk)
+            val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                data = apkUri
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(installIntent)
+        } catch (error: Exception) {
+            importedApkStatus = "Could not open Android installer: ${error.localizedMessage ?: error.javaClass.simpleName}"
         }
     }
 
