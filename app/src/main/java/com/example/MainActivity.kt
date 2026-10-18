@@ -200,7 +200,8 @@ class MainActivity : ComponentActivity() {
 
     private fun inspectSelectedApk(uri: Uri) {
         try {
-            val apkFile = File(cacheDir, "selected-${System.currentTimeMillis()}.apk")
+            val apkDirectory = File(filesDir, "imported-apks").apply { mkdirs() }
+            val apkFile = File(apkDirectory, "selected-${System.currentTimeMillis()}.apk")
             contentResolver.openInputStream(uri).use { input ->
                 requireNotNull(input) { "Could not open the selected APK" }
                 FileOutputStream(apkFile).use { output -> input.copyTo(output) }
@@ -246,7 +247,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        importedApkFile?.delete()
+        // Keep the selected APK available if Android recreates this Activity during
+        // the package-installer / unknown-sources permission flow.
         super.onDestroy()
     }
 }
