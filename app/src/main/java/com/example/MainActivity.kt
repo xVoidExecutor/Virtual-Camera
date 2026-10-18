@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
                         }
                         item {
                             Text("Installed apps", style = MaterialTheme.typography.titleLarge)
-                            Text("Select an app to launch its existing installation. This list is not a virtual clone.")
+                            Text("Open launches the installed app. Work profile asks Android to create a separate managed profile; it is not an embedded virtual runtime.")
                             OutlinedButton(onClick = { refreshInstalledApps() }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Refresh app list")
                             }
@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
                                             Text("Open")
                                         }
                                         OutlinedButton(onClick = { setUpWorkProfileFor(app.packageName) }) {
-                                            Text("Clone")
+                                            Text("Work profile")
                                         }
                                     }
                                 }
